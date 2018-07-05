@@ -74,6 +74,7 @@ ExpFitter <- function(CorpsFrame, BaseDay) {
 	Day = CorpsFrame$Day[CorpsFrame$Day <= BaseDay]
 	
 	#Now fit the curve for each caption, wrapped in a try to avoid catastrophic errors
+	#This tryCatch won't make the objects if we're not successful
 	tryCatch({ 
 		GEModel = nls(GE ~ a + Day^b, data=data.frame(GE, Day), start=list(a=GE[1], b=0.5), 
 			control=nls.control(warnOnly=TRUE), weights=SpecWeights[Day])
@@ -84,23 +85,27 @@ ExpFitter <- function(CorpsFrame, BaseDay) {
 	}, warning = function(w) { #This makes it so scenarios of non-convergence don't return bad coefficients
 		#print("Can't run corps due to non-convergence")
 	}, error = function(e) {
-		#print("Can't run corps for some reason")
+		#print("Can't run corps due to an error in curve fitting")
 	}) 
 	
-	#Check to see if all of the models exist. if not, return NA
+	#Check to see how many of the 3 models exist
 	ExistVec = c(exists('GEModel'), exists('VisModel'), exists('MusModel'))
 	
 	#Create a copy of CorpsFrame we can modify
 	CorpsFrame2 = CorpsFrame
-	TrimmedResult = NA
+	TrimmedResult = NA #This tracks if we're successful in the if loop
+	
 	if (sum(ExistVec) < 3) { #This means we didn't get a good fit
 		#Try removing the most recent scores until we get convergence or too small a sample
 		CorpsFrame2 = CorpsFrame2[1:(nrow(CorpsFrame2)-1) ,]
-		print(paste("Trying to fit again without most recent score, nrow is now", nrow(CorpsFrame2)))
-		if (nrow(CorpsFrame) < 6) {
+		#print(paste("Trying to fit again without most recent score, nrow is now", nrow(CorpsFrame2)))
+		
+		if (nrow(CorpsFrame) < 6) { #Check for sample size
 			break
 		} else {
+			#Recursion!
 			TrimmedResult = ExpFitter(CorpsFrame2, BaseDay)
+			#No matter what, we can return TrimmedResult because this is the top level of the recursion
 			return(TrimmedResult)
 		}
 	}
@@ -141,14 +146,14 @@ Predictor <- function(CorpsList, PredictDay, Nmonte, RankDay) {
 		#Loop through each corps and make the random vectors
 		for (C in 1:Ncorps) {
 			CorpsCoefs = CorpsCoefList[[C]]
-			
 			#Recall the exponential is of the form Score = a + Day^b
+			
 			#Make a vector of random a's for each caption
 			GEa = rnorm(Nmonte, mean=CorpsCoefs["GE","a"], sd=CorpsCoefs["GE","aSE"])
-			Va = rnorm(Nmonte, mean=CorpsCoefs["Vis","a"], sd=CorpsCoefs["Vis","aSE"])
-			Ma = rnorm(Nmonte, mean=CorpsCoefs["Mus","a"], sd=CorpsCoefs["Mus","aSE"])
+			Va = rnorm(Nmonte, mean=CorpsCoefs["Vis","a"], sd=CorpsCoefs["Vis","aSE"]) 
+			Ma = rnorm(Nmonte, mean=CorpsCoefs["Mus","a"], sd=CorpsCoefs["Mus","aSE"]) 
 			#Make a vector of b's for each caption
-			GEb = rnorm(Nmonte, mean=CorpsCoefs["GE","b"], sd=CorpsCoefs["GE","bSE"])
+			GEb = rnorm(Nmonte, mean=CorpsCoefs["GE","b"], sd=CorpsCoefs["GE","bSE"]) 
 			Vb = rnorm(Nmonte, mean=CorpsCoefs["Vis","b"], sd=CorpsCoefs["Vis","bSE"])
 			Mb = rnorm(Nmonte, mean=CorpsCoefs["Mus","b"], sd=CorpsCoefs["Mus","bSE"])
 			
@@ -156,6 +161,7 @@ Predictor <- function(CorpsList, PredictDay, Nmonte, RankDay) {
 			GEscore = GEa + PredictDay ^ GEb
 			Vscore = Va + PredictDay ^ Vb
 			Mscore = Ma + PredictDay ^ Mb
+			
 			#Now correct each score to make sure they're actually possible
 			GEscore[GEscore > 40] = 40
 			Vscore[Vscore > 30] = 30
@@ -165,6 +171,18 @@ Predictor <- function(CorpsList, PredictDay, Nmonte, RankDay) {
 			ScoreList[[C]] = GEscore + Vscore + Mscore
 		}
 		
+		#Convert each simulation score to gaps
+		#Yeah, I know this is slow. You'll get over it, nerd
+		for (i in 1:Nmonte) {
+			#Get all the scores and find the max
+			AllScores = sapply(ScoreList, '[[', i)
+			BaseScore = max(AllScores)
+			#Now adjust the score for each corps
+			for (C in 1:length(ScoreList)) {
+				ScoreList[[C]][i] = ScoreList[[C]][i] - BaseScore
+			}
+		}
+				
 		return(ScoreList)
 	}
 	
@@ -210,44 +228,40 @@ Predictor <- function(CorpsList, PredictDay, Nmonte, RankDay) {
 		GEscores = vector(mode='double', length=Ncorps)
 		Vscores = vector(mode='double', length=Ncorps)
 		Mscores = vector(mode='double', length=Ncorps)
+		
 		#Fill in the vectors
 		for (C in 1:Ncorps) {
 			GEscores[C] = CorpsCoefList[[C]]["GE","a"] + RankDay ^ CorpsCoefList[[C]]["GE","b"]
 			Vscores[C] = CorpsCoefList[[C]]["Vis","a"] + RankDay ^ CorpsCoefList[[C]]["Vis","b"]
 			Mscores[C] = CorpsCoefList[[C]]["Mus","a"] + RankDay ^ CorpsCoefList[[C]]["Mus","b"]
 		}
+		#Convert these to gaps
+		GEscores = GEscores - max(GEscores) 
+		Vscores = Vscores - max(Vscores)
+		Mscores = Mscores - max(Mscores)
 		
 		#Get vectors of rank for each caption
 		GEranks = match(GEscores, sort(GEscores, decreasing=T)) #Ranks from highest to lowest
 		Vranks = match(Vscores, sort(Vscores, decreasing=T)) #Ranks from highest to lowest
 		Mranks = match(Mscores, sort(Mscores, decreasing=T)) #Ranks from highest to lowest
 		
-		#Adjust the scores to the prediction day now that the ranking is finished
-		GEscores = GEscores + (0.45 * 0.4) * (PredictDay - RankDay)
-		Vscores = Vscores + (0.45 * 0.3) * (PredictDay - RankDay)
-		Mscores = Mscores + (0.45 * 0.3) * (PredictDay - RankDay)
-		
 		#Now loop through each corps and fill in ScoreList
 		for (C in 1:Ncorps) {
-			#Adjust the uncertainty for slotting in the top 12
-			if (GEranks[C] < 12 & PredictDay > 38) {
-				GErand[,GEranks[C]] = GErand[,GEranks[C]] * (1 - 0.05*(12-GEranks[C])) * (RankDay-38)/14
+			#Adjust the uncertainty for slotting in the top 12 later in the season by reducing the magnitude of the noise
+			if (GEranks[C] < 15 & PredictDay > 38) {
+				GErand[,GEranks[C]] = GErand[,GEranks[C]] * (1 - 0.04*(15-GEranks[C])) * (RankDay-38)/14
 			}
-			if (Vranks[C] < 12 & PredictDay > 38) {
-				Vrand[,Vranks[C]] = Vrand[,Vranks[C]] * (1 - 0.05*(12-GEranks[C])) * (RankDay-38)/14
+			if (Vranks[C] < 15 & PredictDay > 38) {
+				Vrand[,Vranks[C]] = Vrand[,Vranks[C]] * (1 - 0.04*(15-GEranks[C])) * (RankDay-38)/14
 			}
-			if (Mranks[C] < 12 & PredictDay > 38) {
-				Mrand[,Mranks[C]] = Mrand[,Mranks[C]] * (1 - 0.05*(12-Mranks[C])) * (RankDay-38)/14
+			if (Mranks[C] < 15 & PredictDay > 38) {
+				Mrand[,Mranks[C]] = Mrand[,Mranks[C]] * (1 - 0.04*(15-Mranks[C])) * (RankDay-38)/14
 			}
 				
 			#Get the scores for each caption
 			GEvec = GEscores[C] + GErand[,GEranks[C]]
 			Mvec = Mscores[C] + Mrand[,Mranks[C]]
 			Vvec = Vscores[C] + Vrand[,Vranks[C]]
-			#Make sure each score is within the below the max
-			GEvec[GEvec > 40] = 40
-			Mvec[Mvec > 30] = 30
-			Vvec[Vvec > 30] = 30
 			
 			#Put the summed scores into the list
 			ScoreList[[C]] = GEvec + Mvec + Vvec
@@ -262,14 +276,16 @@ Predictor <- function(CorpsList, PredictDay, Nmonte, RankDay) {
 	#Run both score predictors
 	ExpScoreList = ExpPredict(CorpsList, PredictDay, Nmonte)
 	RandScoreList = RandPredict(CorpsList, PredictDay, Nmonte, RankDay)
+	#print(RandScoreList)
 	
 	#Now create the overall score and rank lists to return
 	ScoreList = vector(mode='list', length=Ncorps)
 	RankList = vector(mode='list', length=Ncorps)
 	
-	#Fill in ScoreList using the weighted average
+	#Fill in the final ScoreList
+	#We would weight now, but we weight when adding the noise in each piece
 	for (C in 1:Ncorps) {
-		ScoreList[[C]] = 0.275*ExpScoreList[[C]] * 0.725*RandScoreList[[C]]
+		ScoreList[[C]] = 0.275*ExpScoreList[[C]] + 0.725*RandScoreList[[C]]
 	}
 	
 	#Fill in RankList by sorting the scores
@@ -320,12 +336,15 @@ PredictionReduce_WorldClass <- function(PredictionList) {
 		PercSemis[C] = sum(RankList[[C]] <= 25) / Nmonte
 	}
 	
+	#Adjust the gaps to make sure 1st place is a 0
+	MeanScores = MeanScores - max(MeanScores)
+	
 	#Now format these into a data frame
 	OutFrame = data.frame(Mean=MeanScores, Gold=PercGold, Silver=PercSilver, Bronze=PercBronze, Finals=PercFinals, Semis=PercSemis)
 	row.names(OutFrame) = CorpsNames
 	
 	#Sort the data frame by percent chance of gold
-	OutFrame = OutFrame[order(OutFrame$PercGold, decreasing=T),]
+	OutFrame = OutFrame[order(OutFrame$Mean, decreasing=T),]
 	
 	#Now return the data frame
 	return(OutFrame)
@@ -333,7 +352,7 @@ PredictionReduce_WorldClass <- function(PredictionList) {
 
 #This function returns a vector of information for each corps, based on open class
 	#that's mean score, percent odds of being in 1st, 2nd, 3rd, and making OC Finals
-PredictionReduce_WorldClass <- function(PredictionList) {
+PredictionReduce_OpenClass <- function(PredictionList) {
 	ScoreList = PredictionList[[1]]
 	RankList = PredictionList[[2]]
 	
@@ -357,6 +376,9 @@ PredictionReduce_WorldClass <- function(PredictionList) {
 		PercBronze[C] = sum(RankList[[C]] == 3) / Nmonte
 		PercFinals[C] = sum(RankList[[C]] <= 12) / Nmonte
 	}
+	
+	#Make sure 1st place's gap is 0
+	MeanScores = MeanScores - max(MeanScores)
 	
 	#Now format these into a data frame
 	OutFrame = data.frame(Mean=MeanScores, Gold=PercGold, Silver=PercSilver, Bronze=PercBronze, Finals=PercFinals, Semis=PercSemis)
