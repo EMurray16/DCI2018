@@ -23,7 +23,7 @@ ScoreParse <- function(filename, WorldNames=WorldClass, OpenNames=OpenClass) {
 		#Start by finding all the rows which have data
 		CorpsRows = which(Table$Corps == CorpsName)
 		if (length(CorpsRows) == 0) {
-			return(data.frame(Day=0, GE=0, Vis=0, Mus=0))
+			return(NULL)
 		}
 		
 		#Get vectors for the scores and Day
@@ -48,11 +48,10 @@ ScoreParse <- function(filename, WorldNames=WorldClass, OpenNames=OpenClass) {
 	return(AllFrames)
 }
 
-
 #Create a function that fits the exponential curve to a data frame
 ExpFitter <- function(CorpsFrame, BaseDay) {
 	#Start by checking the number of shows
-	suppressWarnings( library(robustbase) )
+	if (is.null(CorpsFrame)) { return(NULL) }
 	if (nrow(CorpsFrame) < 6) { return(NULL) }
 	
 	#The weight vector reduces weights of recent scores, based on their correlation with finals week scores
@@ -344,7 +343,7 @@ PredictionReduce_WorldClass <- function(PredictionList) {
 	row.names(OutFrame) = CorpsNames
 	
 	#Sort the data frame by percent chance of gold
-	OutFrame = OutFrame[order(OutFrame$Mean, decreasing=T),]
+	OutFrame = OutFrame[order(OutFrame$Gold, decreasing=T),]
 	
 	#Now return the data frame
 	return(OutFrame)
