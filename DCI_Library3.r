@@ -95,9 +95,9 @@ ExpFitter <- function(CorpsFrame, BaseDay) {
 	TrimmedResult = NA #This tracks if we're successful in the if loop
 	
 	if (sum(ExistVec) < 3) { #This means we didn't get a good fit
+		#print("Nonconvergence!")
 		#Try removing the most recent scores until we get convergence or too small a sample
 		CorpsFrame2 = CorpsFrame2[1:(nrow(CorpsFrame2)-1) ,]
-		#print(paste("Trying to fit again without most recent score, nrow is now", nrow(CorpsFrame2)))
 		
 		if (nrow(CorpsFrame) < 6) { #Check for sample size
 			break
@@ -133,7 +133,7 @@ ExpFitter <- function(CorpsFrame, BaseDay) {
 }
 
 #Now make a function that predicts a day for all corps
-Predictor <- function(CorpsList, PredictDay, Nmonte, RankDay) {
+Predictor <- function(CorpsList, PredictDay, Nmonte, RankDay, Damp=TRUE) {
 	#Start by making a function that predicts N scores based on the exponential uncertainty
 	ExpPredict <- function(CorpsCoefList, PredictDay, Nmonte) {
 		#Start by gathering basic information
@@ -186,7 +186,7 @@ Predictor <- function(CorpsList, PredictDay, Nmonte, RankDay) {
 	}
 	
 	#Now create a function that predicts N scores based on the random error
-	RandPredict <- function(CorpsCoefList, PredictDay, Nmonte, RankDay) {
+	RandPredict <- function(CorpsCoefList, PredictDay, Nmonte, RankDay, Damp) {
 		library(MASS)
 		
 		#Get the basic information
@@ -246,17 +246,20 @@ Predictor <- function(CorpsList, PredictDay, Nmonte, RankDay) {
 		
 		#Now loop through each corps and fill in ScoreList
 		for (C in 1:Ncorps) {
-			#Adjust the uncertainty for slotting in the top 12 later in the season by reducing the magnitude of the noise
-			if (GEranks[C] < 15 & PredictDay > 38) {
-				GErand[,GEranks[C]] = GErand[,GEranks[C]] * (1 - 0.04*(15-GEranks[C])) * (RankDay-38)/14
+			#Damp the noise for top 15 if the PredictDay is >38 and Damp is true
+			if (Damp & PredictDay > 38) {
+				#Adjust the uncertainty for slotting in the top 12 later in the season by reducing the magnitude of the noise
+				if (GEranks[C] < 15) {
+					GErand[,GEranks[C]] = GErand[,GEranks[C]] * (1 - 0.03*(15-GEranks[C])) * (RankDay-38)/14
+				}
+				if (Vranks[C] < 15) {
+					Vrand[,Vranks[C]] = Vrand[,Vranks[C]] * (1 - 0.03*(15-GEranks[C])) * (RankDay-38)/14
+				}
+				if (Mranks[C] < 15) {
+					Mrand[,Mranks[C]] = Mrand[,Mranks[C]] * (1 - 0.03*(15-Mranks[C])) * (RankDay-38)/14
+				}
 			}
-			if (Vranks[C] < 15 & PredictDay > 38) {
-				Vrand[,Vranks[C]] = Vrand[,Vranks[C]] * (1 - 0.04*(15-GEranks[C])) * (RankDay-38)/14
-			}
-			if (Mranks[C] < 15 & PredictDay > 38) {
-				Mrand[,Mranks[C]] = Mrand[,Mranks[C]] * (1 - 0.04*(15-Mranks[C])) * (RankDay-38)/14
-			}
-				
+			
 			#Get the scores for each caption
 			GEvec = GEscores[C] + GErand[,GEranks[C]]
 			Mvec = Mscores[C] + Mrand[,Mranks[C]]
@@ -274,7 +277,7 @@ Predictor <- function(CorpsList, PredictDay, Nmonte, RankDay) {
 	
 	#Run both score predictors
 	ExpScoreList = ExpPredict(CorpsList, PredictDay, Nmonte)
-	RandScoreList = RandPredict(CorpsList, PredictDay, Nmonte, RankDay)
+	RandScoreList = RandPredict(CorpsList, PredictDay, Nmonte, RankDay, Damp)
 	#print(RandScoreList)
 	
 	#Now create the overall score and rank lists to return
@@ -284,7 +287,8 @@ Predictor <- function(CorpsList, PredictDay, Nmonte, RankDay) {
 	#Fill in the final ScoreList
 	#We would weight now, but we weight when adding the noise in each piece
 	for (C in 1:Ncorps) {
-		ScoreList[[C]] = 0.275*ExpScoreList[[C]] + 0.725*RandScoreList[[C]]
+		#ScoreList[[C]] = 0.275*ExpScoreList[[C]] + 0.725*RandScoreList[[C]]
+		ScoreList[[C]] = RandScoreList[[C]]
 	}
 	
 	#Fill in RankList by sorting the scores
