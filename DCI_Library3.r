@@ -384,11 +384,11 @@ PredictionReduce_OpenClass <- function(PredictionList) {
 	MeanScores = MeanScores - max(MeanScores)
 	
 	#Now format these into a data frame
-	OutFrame = data.frame(Mean=MeanScores, Gold=PercGold, Silver=PercSilver, Bronze=PercBronze, Finals=PercFinals, Semis=PercSemis)
+	OutFrame = data.frame(Mean=MeanScores, Gold=PercGold, Silver=PercSilver, Bronze=PercBronze, Finals=PercFinals)
 	row.names(OutFrame) = CorpsNames
 	
 	#Sort the data frame by percent chance of gold
-	OutFrame = OutFrame[order(OutFrame$PercGold, decreasing=T),]
+	OutFrame = OutFrame[order(OutFrame$Gold, decreasing=T),]
 	
 	#Now return the data frame
 	return(OutFrame)
