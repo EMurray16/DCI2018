@@ -170,18 +170,29 @@ Predictor <- function(CorpsList, PredictDay, Nmonte, RankDay, Damp=TRUE) {
 			ScoreList[[C]] = GEscore + Vscore + Mscore
 		}
 		
+		
+		#Convert each simulation score to a gap
+		# #Yeah, I know this is slow. You'll get over it, nerd
+		# for (i in 1:Nmonte) {
+			# #Get all the scores and find the max
+			# AllScores = sapply(ScoreList, '[[', i)
+			# BaseScore = max(AllScores)
+			# #Now adjust the score for each corps
+			# for (C in 1:length(ScoreList)) {
+				# ScoreList[[C]][i] = ScoreList[[C]][i] - BaseScore
+			# }
+		# }
+		
+		#How about instead of getting over it, we make it faster like a REAL nerd?
 		#Convert each simulation score to gaps
-		#Yeah, I know this is slow. You'll get over it, nerd
+		BaseScores = vector(mode='double', length=Nmonte)
 		for (i in 1:Nmonte) {
-			#Get all the scores and find the max
-			AllScores = sapply(ScoreList, '[[', i)
-			BaseScore = max(AllScores)
-			#Now adjust the score for each corps
-			for (C in 1:length(ScoreList)) {
-				ScoreList[[C]][i] = ScoreList[[C]][i] - BaseScore
-			}
+			BaseScores[i] = max(sapply(ScoreList, '[[', i))
 		}
-				
+		#Now loop through each corps and subtract the base score
+		for (C in 1:length(ScoreList)) {
+			ScoreList[[C]] = ScoreList[[C]] - BaseScores
+		}		
 		return(ScoreList)
 	}
 	
@@ -347,7 +358,7 @@ PredictionReduce_WorldClass <- function(PredictionList) {
 	row.names(OutFrame) = CorpsNames
 	
 	#Sort the data frame by percent chance of gold
-	OutFrame = OutFrame[order(OutFrame$Gold, decreasing=T),]
+	OutFrame = OutFrame[order(OutFrame$Mean, decreasing=T),]
 	
 	#Now return the data frame
 	return(OutFrame)
@@ -388,7 +399,7 @@ PredictionReduce_OpenClass <- function(PredictionList) {
 	row.names(OutFrame) = CorpsNames
 	
 	#Sort the data frame by percent chance of gold
-	OutFrame = OutFrame[order(OutFrame$Gold, decreasing=T),]
+	OutFrame = OutFrame[order(OutFrame$Mean, decreasing=T),]
 	
 	#Now return the data frame
 	return(OutFrame)
