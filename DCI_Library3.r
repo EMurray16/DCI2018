@@ -298,8 +298,8 @@ Predictor <- function(CorpsList, PredictDay, Nmonte, RankDay, Damp=TRUE) {
 	#Fill in the final ScoreList
 	#We would weight now, but we weight when adding the noise in each piece
 	for (C in 1:Ncorps) {
-		#ScoreList[[C]] = 0.275*ExpScoreList[[C]] + 0.725*RandScoreList[[C]]
-		ScoreList[[C]] = RandScoreList[[C]]
+		ScoreList[[C]] = 0.275*ExpScoreList[[C]] + 0.725*RandScoreList[[C]]
+		#ScoreList[[C]] = RandScoreList[[C]]
 	}
 	
 	#Fill in RankList by sorting the scores
